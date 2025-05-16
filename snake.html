@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Snake Game</title>
+<style>
+body {
+margin: 0;
+font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+background: url('https://upload.wikimedia.org/wikipedia/commons/3/37/Green_snake_skin_pattern.jpg');
+background-size: cover;
+display: flex;
+flex-direction: column;
+align-items: center;
+height: 100vh;
+}
+
+#top-controls {
+position: absolute;
+top: 20px;
+display: flex;
+gap: 10px;
+z-index: 3;
+}
+
+#scoreBoard {
+left: 20px;
+font-size: 20px;
+background: white;
+padding: 8px 14px;
+border-radius: 10px;
+box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+#menu-toggle, #start-btn, #pause-btn {
+background: #ffffff;
+color: #333;
+border: 1px solid #ccc;
+padding: 10px 14px;
+font-size: 16px;
+cursor: pointer;
+border-radius: 10px;
+box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+#menu-toggle {
+border-radius: 50%;
+}
+
+#menu {
+display: none;
+position: absolute;
+top: 60px;
+right: 20px;
+background-color: #ffffff;
+box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+padding: 20px;
+border-radius: 10px;
+flex-direction: column;
+gap: 10px;
+z-index: 2;
+max-height: 80vh;
+overflow-y: auto;
+}
+
+#menu label {
+display: flex;
+justify-content: space-between;
+width: 280px;
+font-size: 14px;
+}
+
+#menu input[type="number"],
+#menu input[type="color"],
+#menu input[type="text"] {
+width: 100px;
+}
+
+#gameCanvas {
+background-color: #7def87;
+margin-top: 120px;
+box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+}
+</style>
+</head>
+<body>
+<div id="top-controls">
+<div id="scoreBoard">Score: 0</div>
+<button id="start-btn" onclick="startGame()">▶ Start</button>
+<button id="pause-btn" onclick="togglePause()">⏯ Pause/Resume</button>
+<button id="menu-toggle" onclick="toggleMenu()">⚒</button>
+</div>
+
+<div id="menu">
+<label><span>Speed (ms):</span> <input type="number" id="speed" value="100" /></label>
+<label><span>World Size:</span> <input type="number" id="worldSize" value="20" /></label>
+<label><span>Snake Size:</span> <input type="number" id="snakeSize" value="1" /></label>
+<label><span>Fruit Count:</span> <input type="number" id="fruitCount" value="1" /></label>
+<label><span>Snake Color:</span> <input type="color" id="snakeColor" value="#00ff00" /></label>
+<label><span>Fruit Color:</span> <input type="color" id="fruitColor" value="#ff0000" /></label>
+<label><span>Canvas Size:</span> <input type="number" id="canvasSize" value="600" /></label>
+<label><span>Border:</span> <input type="checkbox" id="borderEnabled" checked /></label>
+<label><span>Wrap Around:</span> <input type="checkbox" id="wrapAround" /></label>
+<label><span>Snake Head Color:</span> <input type="color" id="headColor" value="#006600" /></label>
+<label><span>Grid Lines:</span> <input type="checkbox" id="gridLines" /></label>
+<label><span>Background Color:</span> <input type="color" id="bgColor" value="#c8facc" /></label>
+<label><span>Snake Grow Rate:</span> <input type="number" id="growRate" value="1" /></label>
+<label><span>Fruit Size:</span> <input type="number" id="fruitSize" value="1" /></label>
+<label><span>Max Fruits:</span> <input type="number" id="maxFruitCount" value="10" /></label>
+<label><span>Obstacle Count:</span> <input type="number" id="obstacleCount" value="0" /></label>
+<label><span>Manual Score Add:</span> <input type="number" id="addScore" value="0" /><button onclick="manualAddScore()">Add</button></label>
+<label><span>Snake Skin URL:</span> <input type="text" id="snakeSkin" value="" placeholder="Leave blank for color" /></label>
+<label><span>Death Enabled:</span> <input type="checkbox" id="deathEnabled" checked /></label>
+<label><span>Max Fruit on Screen:</span> <input type="number" id="maxFruitCount" value="1" /></label>
+<label><span>Enable Auto Play:</span> <input type="checkbox" id="autoPlay" /></label>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+let canvas = document.getElementById("gameCanvas");
+let ctx = canvas.getContext("2d");
+let score = 0;
+let snake = [{ x: 10, y: 10 }];
+let direction = "right";
+let fruits = [];
+let interval, paused = false, autoPlay = false;
+
+function toggleMenu() {
+const menu = document.getElementById("menu");
+if (menu.style.display === "flex") {
+menu.style.display = "none";
+} else {
+const password = prompt("Enter password to access mod menu:");
+if (password === "105041153") {
+menu.style.display = "flex";
+} else {
+alert("Incorrect password.");
+}
+}
+}
+
+function updateSettings() {
+canvas.width = canvas.height = +document.getElementById("canvasSize").value;
+autoPlay = document.getElementById("autoPlay").checked;
+}
+
+function drawCell(x, y, color, image = null) {
+let size = canvas.width / +document.getElementById("worldSize").value;
+if (image) {
+let img = new Image();
+img.onload = () => ctx.drawImage(img, x * size, y * size, size, size);
+img.onerror = () => {
+ctx.fillStyle = color;
+ctx.fillRect(x * size, y * size, size, size);
+};
+img.src = image;
+} else {
+ctx.fillStyle = color;
+ctx.fillRect(x * size, y * size, size, size);
+}
+}
+
+function draw() {
+if (paused) return;
+updateSettings();
+let size = +document.getElementById("worldSize").value;
+ctx.fillStyle = document.getElementById("bgColor").value;
+ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+const skinURL = document.getElementById("snakeSkin").value;
+snake.forEach((s, i) => {
+drawCell(s.x, s.y, i === 0 ? document.getElementById("headColor").value : document.getElementById("snakeColor").value, skinURL || null);
+});
+fruits.forEach(fruit => drawCell(fruit.x, fruit.y, document.getElementById("fruitColor").value));
+}
+
+function placeFruits() {
+fruits = [];
+let size = +document.getElementById("worldSize").value;
+let maxFruits = +document.getElementById("maxFruitCount").value;
+while (fruits.length < maxFruits) {
+let newFruit = { x: Math.floor(Math.random() * size), y: Math.floor(Math.random() * size) };
+if (!snake.some(seg => seg.x === newFruit.x && seg.y === newFruit.y) && !fruits.some(f => f.x === newFruit.x && f.y === newFruit.y)) {
+fruits.push(newFruit);
+}
+}
+}
+
+function move() {
+if (autoPlay) {
+let closestFruit = fruits.reduce((prev, curr) => {
+let prevDist = Math.abs(prev.x - snake[0].x) + Math.abs(prev.y - snake[0].y);
+let currDist = Math.abs(curr.x - snake[0].x) + Math.abs(curr.y - snake[0].y);
+return currDist < prevDist ? curr : prev;
+}, fruits[0]);
+
+if (closestFruit) {
+if (snake[0].x < closestFruit.x) direction = "right";
+else if (snake[0].x > closestFruit.x) direction = "left";
+if (snake[0].y < closestFruit.y) direction = "down";
+else if (snake[0].y > closestFruit.y) direction = "up";
+}
+}
+
+let head = { ...snake[0] };
+if (direction === "up") head.y--;
+if (direction === "down") head.y++;
+if (direction === "left") head.x--;
+if (direction === "right") head.x++;
+
+let size = +document.getElementById("worldSize").value;
+const deathEnabled = document.getElementById("deathEnabled").checked;
+
+if (document.getElementById("wrapAround").checked) {
+head.x = (head.x + size) % size;
+head.y = (head.y + size) % size;
+} else if (deathEnabled && (head.x < 0 || head.y < 0 || head.x >= size || head.y >= size)) {
+return endGame();
+}
+
+if (deathEnabled && snake.some(seg => seg.x === head.x && seg.y === head.y)) return endGame();
+
+snake.unshift(head);
+let ateFruit = false;
+fruits = fruits.filter(fruit => {
+if (fruit.x === head.x && fruit.y === head.y) {
+ateFruit = true;
+score++;
+document.getElementById("scoreBoard").innerText = `Score: ${score}`;
+return false;
+}
+return true;
+});
+if (!ateFruit) snake.pop();
+if (ateFruit) placeFruits();
+draw();
+}
+
+function startGame() {
+clearInterval(interval);
+score = 0;
+snake = [{ x: 10, y: 10 }];
+direction = "right";
+document.getElementById("scoreBoard").innerText = `Score: 0`;
+placeFruits();
+interval = setInterval(move, +document.getElementById("speed").value);
+}
+
+function togglePause() {
+paused = !paused;
+}
+
+function manualAddScore() {
+score += +document.getElementById("addScore").value;
+document.getElementById("scoreBoard").innerText = `Score: ${score}`;
+}
+
+function endGame() {
+clearInterval(interval);
+alert("Game Over! Your score: " + score);
+}
+
+document.addEventListener("keydown", e => {
+const keys = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right" };
+if (keys[e.key] && direction !== { up: "down", down: "up", left: "right", right: "left" }[direction]) {
+direction = keys[e.key];
+}
+});
+</script>
+</body>
+</html>
